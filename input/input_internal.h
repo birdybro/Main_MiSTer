@@ -3,7 +3,27 @@
  *
  * This header is intended only for use by the input subsystem implementation
  * files (input.cpp, input_scancode.cpp, input_dev.cpp, input_joy.cpp,
- * input_quirks.cpp). External consumers should use input.h instead.
+ * input_quirks.cpp).  External consumers should use input.h instead.
+ *
+ * Architecture overview
+ * ---------------------
+ *   input.h              Public API consumed by the rest of MiSTer.
+ *   input_internal.h     (this file) Shared types, externs, and macros.
+ *
+ *   input.cpp            Main event loop (input_test / input_poll), the
+ *                         heavyweight input_cb callback, uinput relay,
+ *                         mapping-mode state machine, mouse aggregation.
+ *   input_scancode.cpp   Scancode translation tables (Linux evdev -> Amiga,
+ *                         PS/2 Set 1 & 2, Archimedes).
+ *   input_dev.cpp        Device lifecycle: hotplug via inotify, merging by
+ *                         /proc/bus/input/devices, player assignment, LED
+ *                         control, button-map file I/O, lightgun calibration.
+ *   input_joy.cpp        Digital/analog joystick routing to the FPGA core,
+ *                         dead-zone processing, per-player key-state tracking,
+ *                         autofire toggle.
+ *   input_quirks.cpp     Per-device quirk handlers: Keyrah, touchscreen,
+ *                         Atari VCS, JoyCon, OpenFIRE, rumble, steering
+ *                         wheels, JAMMA encoders.
  */
 
 #ifndef INPUT_INTERNAL_H
@@ -33,23 +53,23 @@
 enum QUIRK
 {
 	QUIRK_NONE = 0,
-	QUIRK_WIIMOTE,
-	QUIRK_DS3,
-	QUIRK_DS4,
-	QUIRK_DS4TOUCH,
-	QUIRK_MADCATZ360,
-	QUIRK_PDSP,
-	QUIRK_PDSP_ARCADE,
-	QUIRK_JAMMA,
-	QUIRK_JAMMA2,
-	QUIRK_MSSP,
-	QUIRK_TOUCHGUN,
-	QUIRK_VCS,
-	QUIRK_JOYCON,
-	QUIRK_LIGHTGUN_CRT,
-	QUIRK_LIGHTGUN,
-	QUIRK_LIGHTGUN_MOUSE,
-	QUIRK_WHEEL,
+	QUIRK_WIIMOTE,          // Nintendo Wii Remote (light-gun via accelerometer)
+	QUIRK_DS3,              // Sony DualShock 3  (axis remapping + larger deadzone)
+	QUIRK_DS4,              // Sony DualShock 4  (axis remapping + larger deadzone)
+	QUIRK_DS4TOUCH,         // DS4 touchpad exposed as a separate evdev node
+	QUIRK_MADCATZ360,       // Mad Catz Xbox 360 fight-stick variant
+	QUIRK_PDSP,             // Paddle / spinner overlay (dedicated event node)
+	QUIRK_PDSP_ARCADE,      // Arcade-style spinner overlay
+	QUIRK_JAMMA,            // JAMMA arcade encoder (primary mapping table)
+	QUIRK_JAMMA2,           // JAMMA arcade encoder (secondary mapping table)
+	QUIRK_MSSP,             // Mouse-as-spinner overlay
+	QUIRK_TOUCHGUN,         // Touchscreen acting as a light-gun
+	QUIRK_VCS,              // Atari VCS paddle / spinner controller
+	QUIRK_JOYCON,           // Nintendo Switch Joy-Con (requires pairing/combining)
+	QUIRK_LIGHTGUN_CRT,     // Serial CRT light-gun (e.g. GunCon, Stunner)
+	QUIRK_LIGHTGUN,         // USB light-gun (absolute positioning)
+	QUIRK_LIGHTGUN_MOUSE,   // Light-gun that also passes mouse events
+	QUIRK_WHEEL,            // Steering wheel w/ force-feedback range setting
 };
 
 /* ========================================================================
@@ -58,79 +78,93 @@ enum QUIRK
 
 typedef struct
 {
+	/* ---- identification (filled at open time from EVIOCGID / sysfs) ---- */
 	uint16_t bustype, vid, pid, version;
-	char     idstr[256];
-	char     mod;
+	char     idstr[256];            // VID:PID string used as map-file key
+	char     mod;                   // modifier variant flag (e.g. accent key)
 
-	uint8_t  led;
-	uint8_t  mouse;
-	uint8_t  axis_edge[256];
-	int8_t   axis_pos[256];
+	/* ---- capabilities -------------------------------------------------- */
+	uint8_t  led;                   // device has LED indicators
+	uint8_t  mouse;                 // true if this is a mouse/trackball node
+	uint8_t  axis_edge[256];        // edge-trigger state per axis
+	int8_t   axis_pos[256];         // last reported axis position
 
-	uint8_t  num;
-	uint8_t  has_map;
-	uint32_t map[NUMBUTTONS];
-	int      map_shown;
+	/* ---- player number & per-core button mapping ----------------------- */
+	uint8_t  num;                   // 1-based player number (0 = unassigned)
+	uint8_t  has_map;               // per-core map loaded?
+	uint32_t map[NUMBUTTONS];       // per-core button mapping
+	int      map_shown;             // OSD mapping prompt already displayed?
 
-	uint8_t  osd_combo;
+	uint8_t  osd_combo;             // OSD combo key state
 
-	uint8_t  has_mmap;
-	uint32_t mmap[NUMBUTTONS];
-	uint8_t  has_jkmap;
-	uint16_t jkmap[1024];
-	int      stick_l[2];
-	int      stick_r[2];
+	/* ---- default (menu) button mapping --------------------------------- */
+	uint8_t  has_mmap;              // default map loaded?
+	uint32_t mmap[NUMBUTTONS];      // default (menu) mapping
+	uint8_t  has_jkmap;             // per-core joystick-to-keyboard map loaded?
+	uint16_t jkmap[1024];           // joy -> keyboard remapping table
+	int      stick_l[2];            // left  stick axis indices [X, Y]
+	int      stick_r[2];            // right stick axis indices [X, Y]
 
+	/* ---- keyboard remapping -------------------------------------------- */
 	uint8_t  has_kbdmap;
-	uint8_t  kbdmap[256];
+	uint8_t  kbdmap[256];           // scancode -> scancode remap
 
-	int32_t  guncal[4];
+	/* ---- light-gun calibration ----------------------------------------- */
+	int32_t  guncal[4];             // [x_off, y_off, x_scale, y_scale]
 
-	int      accx, accy;
-	int      startx, starty;
-	int      lastx, lasty;
-	int      quirk;
+	/* ---- touchscreen / accelerometer state ----------------------------- */
+	int      accx, accy;            // accumulated touch delta
+	int      startx, starty;        // touch-down origin
+	int      lastx, lasty;          // previous touch position
+	int      quirk;                 // QUIRK_* enum identifying special handling
 
-	int      misc_flags;
-	int      paddle_val;
-	int      spinner_prev;
-	int      spinner_acc;
-	int      spinner_prediv;
-	int      spinner_dir;
-	int      spinner_accept;
-	int      old_btn;
-	int      ds_mouse_emu;
+	/* ---- spinner / paddle state ---------------------------------------- */
+	int      misc_flags;            // bitfield: JoyCon pairing flags, etc.
+	int      paddle_val;            // last paddle ADC value
+	int      spinner_prev;          // previous spinner position
+	int      spinner_acc;           // accumulated spinner delta
+	int      spinner_prediv;        // pre-divider for high-resolution spinners
+	int      spinner_dir;           // last spin direction (+1 / -1)
+	int      spinner_accept;        // axis ready for spinner input?
+	int      old_btn;               // previous button state (VCS, etc.)
+	int      ds_mouse_emu;          // DualShock trackpad -> mouse emulation
 
-	int      lightgun_req;
-	int      lightgun;
+	/* ---- light-gun runtime -------------------------------------------- */
+	int      lightgun_req;          // pending light-gun coordinate update?
+	int      lightgun;              // light-gun mode enabled for this device
 
-	int      has_rumble;
-	int      rumble_en;
-	uint16_t last_rumble;
-	ff_effect rumble_effect;
+	/* ---- force-feedback / rumble --------------------------------------- */
+	int      has_rumble;            // device supports FF_RUMBLE?
+	int      rumble_en;             // rumble currently enabled?
+	uint16_t last_rumble;           // last rumble magnitude sent
+	ff_effect rumble_effect;        // uploaded FF effect
 
-	int8_t   wh_steer;
-	int8_t   wh_accel;
-	int8_t   wh_brake;
-	int8_t   wh_clutch;
-	int8_t   wh_combo;
-	int8_t   wh_pedal_invert;
+	/* ---- steering wheel axis mapping ----------------------------------- */
+	int8_t   wh_steer;              // axis index: steering
+	int8_t   wh_accel;              //              accelerator
+	int8_t   wh_brake;              //              brake
+	int8_t   wh_clutch;             //              clutch
+	int8_t   wh_combo;              // combined pedal axis mode
+	int8_t   wh_pedal_invert;       // invert pedal values
 
-	int      timeout;
-	char     mac[64];
+	/* ---- Bluetooth & enumeration -------------------------------------- */
+	int      timeout;               // BT auto-disconnect countdown (0 = wired)
+	char     mac[64];               // Bluetooth MAC (empty for wired)
 
-	int      bind;
-	uint32_t unique_hash;
-	char     devname[32];
-	char     id[80];
-	char     name[128];
-	char     sysfs[512];
+	/* ---- device merging / multi-function binding ----------------------- */
+	int      bind;                  // index of master device (self if unbound)
+	uint32_t unique_hash;           // hash of id + mac for unique mapping
+	char     devname[32];           // /dev/input/eventN path
+	char     id[80];                // merged physical-path id
+	char     name[128];             // human-readable name from EVIOCGNAME
+	char     sysfs[512];            // sysfs path for this device
 
-	int      ss_range[2];
-	int      max_cardinal[2];
-	float    max_range[2];
+	/* ---- analog range tracking (for dead-zone & N64 emu) -------------- */
+	int      ss_range[2];           // max sum-of-squares seen [stick0, stick1]
+	int      max_cardinal[2];       // max cardinal distance   [stick0, stick1]
+	float    max_range[2];          // sqrt(ss_range)          [stick0, stick1]
 
-	uint32_t deadzone;
+	uint32_t deadzone;              // dead-zone radius (0-64, cfgurable)
 } devInput;
 
 /* ========================================================================

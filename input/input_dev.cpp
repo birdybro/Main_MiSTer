@@ -34,6 +34,8 @@
 static int mfd = -1;
 static int mwd = -1;
 
+/* Set up inotify to watch /dev/input for device hotplug events.
+ * Returns the inotify fd on success, -1 on failure. */
 int set_watch()
 {
 	mwd = -1;
@@ -58,6 +60,7 @@ int set_watch()
 #define EVENT_SIZE  ( sizeof (struct inotify_event) )
 #define BUF_LEN     ( 1024 * ( EVENT_SIZE + 16 ) )
 
+/* Read pending inotify events; returns 1 if devices were added/removed. */
 int check_devs()
 {
 	int result = 0;
@@ -280,6 +283,8 @@ void update_num_hw(int dev, int num)
 
 #define JOYMAP_DIR  "inputs/"
 
+/* Load a controller map from the "inputs/" config directory.
+ * Falls back to the root config directory for legacy compatibility. */
 int load_map(const char *name, void *pBuffer, int size)
 {
 	char path[256] = { JOYMAP_DIR };
@@ -309,6 +314,9 @@ int save_map(const char *name, void *pBuffer, int size)
  *  Mapping name generation
  * ======================================================================== */
 
+/* Return a unique mapping key string for the device.
+ * If force_unique is set (or configured per-VID:PID), appends a hash
+ * of the device's MAC/serial so identical controllers get separate maps. */
 char *get_unique_mapping(int dev, int force_unique)
 {
 	uint32_t vidpid = (input[dev].vid << 16) | input[dev].pid;
@@ -466,6 +474,8 @@ void restore_player(int dev)
 	update_num_hw(dev, input[dev].num);
 }
 
+/* Assign a player number to a device and persist the assignment.
+ * force=1 overrides any existing assignment. */
 void assign_player(int dev, int num, int force)
 {
 	input[dev].num = num;
@@ -614,6 +624,9 @@ void make_unique(uint16_t vid, uint16_t pid, int type)
 	}
 }
 
+/* Merge multi-function device nodes (event + mouse) that share the same
+ * physical path in /proc/bus/input/devices.  Also applies the no-merge
+ * and spinner/paddle quirk lists. */
 void mergedevs()
 {
 	for (int i = 0; i < NUMDEV; i++)

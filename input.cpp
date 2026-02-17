@@ -42,16 +42,25 @@ char joy_bnames[NUMBUTTONS][32] = {};
 int  joy_bcount = 0;
 struct pollfd pool[NUMDEV + 3];
 
+/* ========================================================================
+ *  Keyboard modifier tracking
+ * ======================================================================== */
+
 static uint32_t modifier = 0;
 
 /* Shared state (non-static, declared extern in input_internal.h) */
 devInput input[NUMDEV] = {};
 int grabbed = 0;
 
+/* Return the currently-held keyboard modifiers (Ctrl/Shift/Alt/GUI). */
 uint32_t get_key_mod()
 {
 	return modifier & MODMASK;
 }
+
+/* ========================================================================
+ *  Keyboard LED state (Num/Caps/Scroll Lock)
+ * ======================================================================== */
 
 
 static char leds_state = 0;
@@ -77,6 +86,15 @@ void sysled_enable(int en)
 {
 	sysled_is_enabled = en;
 }
+
+/* ========================================================================
+ *  Mapping-mode state machine
+ *
+ *  When the user enters button-mapping mode from the OSD, these variables
+ *  track which device, which button index, and whether we are configuring
+ *  the default (menu) map, a per-core map, a keyboard map, or a joy-to-key
+ *  map.  See start_map_setting() / finish_map_setting().
+ * ======================================================================== */
 
 int mapping = 0;
 int mapping_button;
@@ -198,6 +216,13 @@ int has_default_map()
 
 void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int dev);
 
+/* ========================================================================
+ *  Mouse / emulated-mouse state
+ *
+ *  MiSTer can aggregate real mice *and* gamepad-emulated mouse movement
+ *  into a single stream sent to the FPGA core each frame.
+ * ======================================================================== */
+
 int kbd_toggle = 0;
 static uint32_t crtgun_timeout[NUMDEV] = {};
 
@@ -214,6 +239,10 @@ int mouse_emu_x = 0;
 int mouse_emu_y = 0;
 
 uint32_t mouse_timer = 0;
+
+/* ========================================================================
+ *  uinput virtual keyboard  (relays key events to Linux when ungrabbed)
+ * ======================================================================== */
 
 static int uinp_fd = -1;
 static int input_uinp_setup()
@@ -323,6 +352,18 @@ void mouse_btn_req()
 {
 	if (grabbed) mouse_req |= 2;
 }
+
+/* ========================================================================
+ *  input_cb  -  core input event callback
+ *
+ *  Called for every EV_KEY / EV_ABS / EV_REL event from every open device.
+ *  Responsibilities:
+ *    - keyboard scancode translation & forwarding to the FPGA core
+ *    - gamepad button/axis -> player mapping (via joy_digital / joy_analog)
+ *    - mapping-mode intercept (records button assignments)
+ *    - OSD navigation via gamepad
+ *    - mouse-emulation via d-pad/sticks
+ * ======================================================================== */
 
 void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int dev)
 {
@@ -1405,6 +1446,7 @@ void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int dev)
 	}
 }
 
+/* Send a synthetic key event into the mapping-mode state machine. */
 void send_map_cmd(int key)
 {
 	if (mapping && mapping_dev >= 0)
@@ -1420,7 +1462,17 @@ void send_map_cmd(int key)
 #define CMD_FIFO "/dev/MiSTer_cmd"
 #define LED_MONITOR "/sys/class/leds/hps_led0/brightness_hw_changed"
 
-// add sequential suffixes for non-merged devices
+/* ========================================================================
+ *  input_test  -  main device polling & event dispatch loop
+ *
+ *  Opens evdev nodes, detects hotplug via inotify, reads events from all
+ *  devices via poll(), and dispatches them through input_cb().  Also
+ *  handles device identification, quirk detection, Bluetooth timeouts,
+ *  serial CRT light-gun data, and /dev/MiSTer_cmd FIFO commands.
+ *
+ *  Returns the next OSD character when getchar != 0, or 0 otherwise.
+ * ======================================================================== */
+
 int input_test(int getchar)
 {
 	static char cur_leds = 0;
@@ -2558,6 +2610,13 @@ int input_test(int getchar)
 	return 0;
 }
 
+/* ========================================================================
+ *  input_poll  -  per-frame entry point called from the main loop
+ *
+ *  Drives autofire frame counters, calls input_test() for device I/O,
+ *  then aggregates digital joystick masks and mouse deltas for the core.
+ * ======================================================================== */
+
 int input_poll(int getchar)
 {
 	PROFILE_FUNCTION();
@@ -2652,6 +2711,7 @@ int input_poll(int getchar)
 	return 0;
 }
 
+/* Query the kernel to see if a specific key is physically held down. */
 int is_key_pressed(int key)
 {
 	unsigned char bits[(KEY_CNT + 7) / 8];
@@ -2680,6 +2740,7 @@ int is_key_pressed(int key)
 	return 0;
 }
 
+/* Reset mouse-emulation state on core/mode switch. */
 void input_notify_mode()
 {
 	//reset mouse parameters on any mode switch
@@ -2693,6 +2754,7 @@ void input_notify_mode()
 	mouse_btn_req();
 }
 
+/* Grab or release all evdev file descriptors (prevents events leaking to Linux). */
 void input_switch(int grab)
 {
 	if (grab >= 0) grabbed = grab;
@@ -2708,6 +2770,10 @@ int input_state()
 {
 	return grabbed;
 }
+
+/* ========================================================================
+ *  Core button-string overrides (J,/jn,/jp, in MRA/core config)
+ * ======================================================================== */
 
 static char ovr_buttons[1024] = {};
 static char ovr_nmap[1024] = {};

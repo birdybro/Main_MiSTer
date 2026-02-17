@@ -100,6 +100,8 @@ int keyrah_trans(int key, int press)
  *  Mouse throttling helper
  * ======================================================================== */
 
+/* Rate-limit mouse movement reports from DualShock trackpads and similar
+ * high-resolution devices to avoid flooding the FPGA core. */
 void send_mouse_with_throttle(int dev, int xval, int yval, int8_t wval)
 {
 	int i = dev;
@@ -128,6 +130,7 @@ void send_mouse_with_throttle(int dev, int xval, int yval, int8_t wval)
 
 uint32_t touch_rel = 0;
 
+/* Release emulated mouse button after touchscreen lift-off timeout. */
 void check_touch_release()
 {
 	if (touch_rel && CheckTimer(touch_rel))
@@ -138,6 +141,8 @@ void check_touch_release()
 	}
 }
 
+/* Translate touchscreen ABS_X/ABS_Y into light-gun coordinates or
+ * emulated mouse movement depending on core configuration. */
 void touchscreen_proc(int dev, input_event *ev)
 {
 	struct input_absinfo absinfo;
@@ -275,6 +280,9 @@ void touchscreen_proc(int dev, input_event *ev)
  *  Atari VCS controller processing
  * ======================================================================== */
 
+/* Handle Atari VCS controller quirks: 5/8-button mode toggle via combo,
+ * spinner-to-paddle translation, and button remapping. Returns 0 to
+ * suppress the event or 1 to pass it through to normal processing. */
 int vcs_proc(int dev, input_event *ev)
 {
 	devInput *inp = &input[dev];
@@ -450,6 +458,8 @@ void openfire_signal()
  *  Nintendo JoyCon pairing & combined-mode processing
  * ======================================================================== */
 
+/* Pair left/right JoyCon controllers that share the same :combo LED
+ * identifier, binding them together so they act as a single gamepad. */
 void check_joycon()
 {
 	while (1)
@@ -501,6 +511,9 @@ void check_joycon()
 	}
 }
 
+/* Re-route events from a paired JoyCon half to its partner's input
+ * stream, synthesising DPAD from the left stick and remapping buttons
+ * so the combined pair behaves like a standard controller. */
 int process_joycon(int dev, input_event *ev, input_absinfo *absinfo)
 {
 	if (ev->type == EV_ABS)
@@ -609,6 +622,7 @@ int process_joycon(int dev, input_event *ev, input_absinfo *absinfo)
  *  Force-feedback (rumble) support
  * ======================================================================== */
 
+/* Find the evdev index that owns the rumble motor for a given player. */
 int get_rumble_device(int player)
 {
 	for (int i = 0; i < NUMDEV; i++)
@@ -625,6 +639,8 @@ int get_rumble_device(int player)
 	return -1;
 }
 
+/* Upload and play (or stop) a force-feedback rumble effect on a device.
+ * Passing strong_mag=0 and weak_mag=0 removes the current effect. */
 int rumble_input_device(int devnum, uint16_t strong_mag, uint16_t weak_mag, uint16_t duration, uint16_t delay)
 {
 	int ioret = 0;
@@ -672,6 +688,8 @@ int rumble_input_device(int devnum, uint16_t strong_mag, uint16_t weak_mag, uint
 	return 0;
 }
 
+/* Convenience wrapper: split a 16-bit value into strong/weak magnitudes
+ * and issue a rumble effect, de-duplicating identical consecutive calls. */
 void set_rumble(int dev, uint16_t rumble_val)
 {
 	if (input[dev].last_rumble != rumble_val)
@@ -690,6 +708,8 @@ void set_rumble(int dev, uint16_t rumble_val)
  *  Steering wheel setup & range control
  * ======================================================================== */
 
+/* Write a rotation range (in degrees) to the sysfs "range" attribute
+ * of a steering wheel, e.g. 270 or 900. */
 void set_wheel_range(int dev, int range)
 {
 	static char path[1024];
@@ -706,6 +726,8 @@ void set_wheel_range(int dev, int range)
 	}
 }
 
+/* Scan all connected devices for known steering-wheel VID/PID combos
+ * and configure their pedal axes, force-feedback, and rotation ranges. */
 void setup_wheels()
 {
 	if (cfg.wheel_force > 100) cfg.wheel_force = 100;
