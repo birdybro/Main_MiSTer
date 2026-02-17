@@ -39,6 +39,7 @@ C_SRC =   $(wildcard *.c) \
           lib/libco/arm.c
 
 CPP_SRC = $(wildcard *.cpp) \
+          $(wildcard ./input/*.cpp) \
           $(wildcard ./lib/serial_server/library/*.cpp) \
           $(wildcard ./support/*/*.cpp)
 
