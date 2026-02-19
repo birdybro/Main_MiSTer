@@ -1978,7 +1978,7 @@ uint32_t build_joy_mask(int player)
 	if (cfg.socd)
 	{
 		if ((mask & (JOY_LEFT | JOY_RIGHT)) == (JOY_LEFT | JOY_RIGHT)) mask &= ~(JOY_LEFT | JOY_RIGHT);
-		if ((mask & (JOY_UP | JOY_DOWN)) == (JOY_UP | JOY_DOWN)) mask &= ~(JOY_UP | JOY_DOWN);
+		if ((mask & (JOY_UP | JOY_DOWN)) == (JOY_UP | JOY_DOWN)) mask &= (cfg.socd == 2) ? ~JOY_DOWN : ~(JOY_UP | JOY_DOWN);
 	}
 
 	return mask;
