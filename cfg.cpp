@@ -77,6 +77,7 @@ static const ini_var_t ini_vars[] =
 	{ "JAMMA2_VID", (void*)(&(cfg.jamma2_vid)), HEX16, 0, 0xFFFF },
 	{ "JAMMA2_PID", (void*)(&(cfg.jamma2_pid)), HEX16, 0, 0xFFFF },
 	{ "SNIPER_MODE", (void*)(&(cfg.sniper_mode)), UINT8, 0, 1 },
+	{ "SOCD", (void*)(&(cfg.socd)), UINT8, 0, 1 },
 	{ "BROWSE_EXPAND", (void*)(&(cfg.browse_expand)), UINT8, 0, 1 },
 	{ "LOGO", (void*)(&(cfg.logo)), UINT8, 0, 1 },
 	{ "SHARED_FOLDER", (void*)(&(cfg.shared_folder)), STRING, 0, sizeof(cfg.shared_folder) - 1 },
