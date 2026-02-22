@@ -2974,7 +2974,8 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 				}
 
 				mapping_clear = 0;
-				if (mapping_dev >= 0 && !map_skip && (mapping_dev == dev || clear) && mapping_button < (is_menu() ? (mapping_type ? SYS_BTN_CNT_ESC + 1 : SYS_BTN_OSD_KTGL + 1) : mapping_count))
+				int mapping_limit = is_menu() ? (mapping_type ? SYS_BTN_CNT_ESC + 1 : SYS_BTN_OSD_KTGL + 1) : mapping_count;
+				if (mapping_dev >= 0 && !map_skip && (mapping_dev == dev || clear) && mapping_button < mapping_limit)
 				{
 					if (ev->value == 1 && !key_mapped)
 					{
