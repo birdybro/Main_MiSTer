@@ -2055,8 +2055,9 @@ static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int 
 				int old_osdbtn = osdbtn;
 				osdbtn &= ~mask;
 
+				bool all_three_held = (old_osdbtn & (JOY_BTN1 | JOY_BTN2 | JOY_BTN3)) == (JOY_BTN1 | JOY_BTN2 | JOY_BTN3);
 				if (mask & (JOY_BTN1 | JOY_BTN2)) {
-					if ((old_osdbtn & (JOY_BTN1 | JOY_BTN2 | JOY_BTN3)) == (JOY_BTN1 | JOY_BTN2 | JOY_BTN3))
+					if (all_three_held)
 					{
 						mask = JOY_BTN3;
 					}
