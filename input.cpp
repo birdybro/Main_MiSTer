@@ -1873,20 +1873,20 @@ static bool handle_autofire_toggle(int num, uint32_t mask, uint32_t code, char p
 	{
 		if ((lastcode[num] && lastmask[num] && (lastmask[num] & 0xF) == 0)) // don't allow enabling autofire on directions
 		{
-			char *strat = str;
+			char *str_ptr = str;
 			inc_autofire_code(num, lastcode[num], lastmask[num]);
 			
 			// display autofire status for each button in the mask
 			FOR_EACH_SET_BIT(lastmask[num], btn) {
-				strat += sprintf(strat, "%s\n", joy_bnames[btn-4]);
+				str_ptr += sprintf(str_ptr, "%s\n", joy_bnames[btn-4]);
 			}
 
 			const char *rate = get_autofire_rate_hz(num, lastcode[num]);
 
 			if (!strcmp(rate, "disabled")) {
-					strat += sprintf(strat, "Autofire disabled");
+					str_ptr += sprintf(str_ptr, "Autofire disabled");
 			} else {
-					strat += sprintf(strat, "Autofire: %s", rate);
+					str_ptr += sprintf(str_ptr, "Autofire: %s", rate);
 			}
 
 			if (hasAPI1_5())
