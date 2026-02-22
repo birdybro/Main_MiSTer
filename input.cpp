@@ -2768,7 +2768,9 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 						if (input[i].quirk != QUIRK_TOUCHGUN)
 						{
 							// paddles/spinners overlay on top of other gamepad
-							if (!((input[dev].quirk == QUIRK_PDSP || input[dev].quirk == QUIRK_MSSP) ^ (input[i].quirk == QUIRK_PDSP || input[i].quirk == QUIRK_MSSP)))
+							bool dev_is_pdsp_mssp = input[dev].quirk == QUIRK_PDSP || input[dev].quirk == QUIRK_MSSP;
+							bool i_is_pdsp_mssp   = input[i].quirk   == QUIRK_PDSP || input[i].quirk   == QUIRK_MSSP;
+							if (dev_is_pdsp_mssp == i_is_pdsp_mssp)
 							{
 								found = (input[i].num == num);
 								if (found) break;
