@@ -46,7 +46,6 @@ struct arc_struct {
 	uint32_t address;
 	uint32_t crc;
 	buffer_data *data;
-	struct MD5Context context;
 };
 
 static char arcade_error_msg[kBigTextSize] = {};
@@ -227,12 +226,10 @@ static int rom_checksz(int idx, int chunk)
 	return 1;
 }
 
-static int rom_data(const uint8_t *buf, int chunk, int map, struct MD5Context *md5context)
+static int rom_data(const uint8_t *buf, int chunk, int map)
 {
 	uint8_t offsets[8]; // assert (unitlen <= 8)
 	int bytes_in_iter = 0;
-
-	if (md5context) MD5Update(md5context, buf, chunk);
 
 	int idx = 0;
 	if (!map) map = 1;
@@ -282,7 +279,7 @@ static int rom_data(const uint8_t *buf, int chunk, int map, struct MD5Context *m
 	return 1;
 }
 
-static int rom_file(const char *name, uint32_t crc32, int start, int len, int map, struct MD5Context *md5context)
+static int rom_file(const char *name, uint32_t crc32, int start, int len, int map)
 {
 	fileTYPE f = {};
 	static uint8_t buf[8192];
@@ -296,7 +293,7 @@ static int rom_file(const char *name, uint32_t crc32, int start, int len, int ma
 		uint16_t chunk = (bytes2send > sizeof(buf)) ? sizeof(buf) : bytes2send;
 
 		FileReadAdv(&f, buf, chunk);
-		if (!rom_data(buf, chunk, map, md5context))
+		if (!rom_data(buf, chunk, map))
 		{
 			FileClose(&f);
 			return 0;
@@ -481,7 +478,6 @@ static int xml_send_rom(XMLEvent evt, const XMLNode* node, SXML_CHAR* text, cons
 			arc_info->zipname[0] = 0;
 			arc_info->address = 0;
 			arc_info->insideinterleave = 0;
-			MD5Init(&arc_info->context);
 			ProgressMessage(0, 0, 0, 0);
 		}
 
@@ -804,7 +800,11 @@ static int xml_send_rom(XMLEvent evt, const XMLNode* node, SXML_CHAR* text, cons
 			if (arc_info->insiderom)
 			{
 				unsigned char checksum[16];
-				MD5Final(checksum, &arc_info->context);
+				struct MD5Context ctx;
+				MD5Init(&ctx);
+				if (romdata && romlen[0] > 0)
+					MD5Update(&ctx, romdata, romlen[0]);
+				MD5Final(checksum, &ctx);
 
 				char hex[40];
 				char *p = hex;
@@ -841,9 +841,7 @@ static int xml_send_rom(XMLEvent evt, const XMLNode* node, SXML_CHAR* text, cons
 					}
 				}
 
-				checksumsame |= no_checksum;
-
-				rom_finish(checksumsame, arc_info->address, arc_info->romindex);
+				rom_finish(1, arc_info->address, arc_info->romindex);
 			}
 			arc_info->insiderom = 0;
 		}
@@ -899,7 +897,7 @@ static int xml_send_rom(XMLEvent evt, const XMLNode* node, SXML_CHAR* text, cons
 
 					for (int i = 0; i < repeat; i++)
 					{
-						result = rom_file(fname, crc32, start, length, arc_info->imap, &arc_info->context);
+						result = rom_file(fname, crc32, start, length, arc_info->imap);
 
 						// we should check file not found error for the zip
 						if (result == 0)
@@ -927,7 +925,7 @@ static int xml_send_rom(XMLEvent evt, const XMLNode* node, SXML_CHAR* text, cons
 				printf("data: ");
 				if (binary)
 				{
-					for (int i = 0; i < repeat; i++) rom_data(binary, len, arc_info->imap, &arc_info->context);
+					for (int i = 0; i < repeat; i++) rom_data(binary, len, arc_info->imap);
 					free(binary);
 				}
 				printf("%d(0x%X) bytes from xml\n", romlen[0] - prev_len, romlen[0] - prev_len);
@@ -1205,9 +1203,9 @@ void arcade_check_error()
 {
 	if (arcade_error_msg[0] != 0) {
 		printf("ERROR: [%s]\n", arcade_error_msg);
-		Info(arcade_error_msg, 1000 * 5);
+		Info(arcade_error_msg, 1000 * 30);
 		arcade_error_msg[0] = 0;
-		sleep(5+3);
+		sleep(30);
 	}
 }
 
