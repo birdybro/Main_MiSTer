@@ -5869,6 +5869,42 @@ void key_update_frames_held()
 	}
 }
 
+static uint32_t apply_socd(uint32_t mask, int p)
+{
+	if (!cfg.socd) return mask;
+
+	static uint32_t prev[NUMPLAYERS] = {};
+	static uint8_t last_h[NUMPLAYERS] = {}; // last horizontal: 0, JOY_LEFT, or JOY_RIGHT
+	static uint8_t last_v[NUMPLAYERS] = {}; // last vertical:   0, JOY_DOWN, or JOY_UP
+
+	if (cfg.socd == 3)
+	{
+		uint32_t new_p = mask & ~prev[p];
+		if (new_p & JOY_LEFT)  last_h[p] = JOY_LEFT;
+		if (new_p & JOY_RIGHT) last_h[p] = JOY_RIGHT;
+		if (new_p & JOY_UP)    last_v[p] = JOY_UP;
+		if (new_p & JOY_DOWN)  last_v[p] = JOY_DOWN;
+		prev[p] = mask;
+	}
+
+	uint32_t dirs = mask & JOY_MOVE;
+
+	if ((dirs & (JOY_LEFT | JOY_RIGHT)) == (JOY_LEFT | JOY_RIGHT))
+	{
+		if (cfg.socd == 1 || cfg.socd == 2) dirs &= ~(JOY_LEFT | JOY_RIGHT);
+		if (cfg.socd == 3)                  dirs = (dirs & ~(JOY_LEFT | JOY_RIGHT)) | last_h[p];
+	}
+
+	if ((dirs & (JOY_UP | JOY_DOWN)) == (JOY_UP | JOY_DOWN))
+	{
+		if (cfg.socd == 1) dirs &= ~(JOY_UP | JOY_DOWN);
+		if (cfg.socd == 2) dirs &= ~JOY_DOWN;
+		if (cfg.socd == 3) dirs = (dirs & ~(JOY_UP | JOY_DOWN)) | last_v[p];
+	}
+
+	return (mask & ~JOY_MOVE) | dirs;
+}
+
 int input_poll(int getchar)
 {
 	PROFILE_FUNCTION();
@@ -5926,7 +5962,7 @@ int input_poll(int getchar)
 	if (grabbed)
 	{
 		for (int i = 0; i < NUMPLAYERS; i++) {
-			joy_mask[i] = joy_mask[i] | autofire_mask[i];
+			joy_mask[i] = apply_socd(joy_mask[i] | autofire_mask[i], i);
 			int newdir = (joy_mask[i] & 0xF) | (joy_mask_prev[i] & 0xF);
 			if (joy_mask[i] != joy_mask_prev[i])
 			{
