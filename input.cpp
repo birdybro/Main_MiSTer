@@ -5945,6 +5945,26 @@ int input_poll(int getchar)
 		memset(key_states, 0, sizeof(key_states));
 	}
 
+	// Reset analog joystick state on OSD visibility transitions so that
+	// directions held when the OSD opens don't remain stuck when it closes.
+	{
+		static char prev_osd_visible = 0;
+		char osd_visible = user_io_osd_is_visible();
+		if (osd_visible != prev_osd_visible)
+		{
+			prev_osd_visible = osd_visible;
+			for (int i = 0; i < NUMPLAYERS; i++)
+			{
+				user_io_l_analog_joystick(i, 0, 0);
+				user_io_r_analog_joystick(i, 0, 0);
+			}
+			for (int i = 0; i < NUMDEV; i++)
+			{
+				memset(input[i].axis_pos, 0, sizeof(input[i].axis_pos));
+			}
+		}
+	}
+
 	if (mouse_req)
 	{
 		static uint32_t old_time = 0;
