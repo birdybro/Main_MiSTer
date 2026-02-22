@@ -1793,7 +1793,7 @@ static void joy_apply_deadzone(int* x, int* y, const devInput* dev, const int st
 	// Don't be fancy with such a small deadzone.
 	if (dev->deadzone <= 2) 
 	{
-		if (dev->deadzone && (abs((*x > *y) == (*x > -*y) ? *x : *y) <= dev->deadzone))
+		if (dev->deadzone && abs(*x) <= dev->deadzone && abs(*y) <= dev->deadzone)
 			*x = *y = 0;
 		return;
 	}
