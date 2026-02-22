@@ -1813,8 +1813,9 @@ static void joy_apply_deadzone(int* x, int* y, const devInput* dev, const int st
 	const float cardinality = (1.4142136f - box_radius) * 2.4142136f;
 
 	// Expected range for the given angle.
-	const float max_cardinal = dev->max_cardinal[stick] > (2.0f * dev->deadzone) ? dev->max_cardinal[stick] : 127.0f;
-	const float max_diagonal = dev->max_range[stick] > (2.0f * dev->deadzone) ? dev->max_range[stick] : 127.0f;
+	const float min_useful_range = 2.0f * dev->deadzone;
+	const float max_cardinal = dev->max_cardinal[stick] > min_useful_range ? dev->max_cardinal[stick] : 127.0f;
+	const float max_diagonal = dev->max_range[stick]    > min_useful_range ? dev->max_range[stick]    : 127.0f;
 	const float range = cardinality * max_cardinal + (1.0f - cardinality) * max_diagonal;
 
 	const float weight = 1.0f - fmaxf(range - radius, .0f) / (range - dev->deadzone);
