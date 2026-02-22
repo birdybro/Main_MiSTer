@@ -195,6 +195,25 @@ static int      romblkl = 0;
 static uint8_t* romdata = 0;
 static uint8_t  romindex = 0;
 
+/* Deferred ROM0 for merged ROM sets: when ROM0 has a checksum mismatch we
+ * hold the assembled data here instead of sending it immediately.  If a later
+ * ROM0 element passes its checksum we discard the held copy; if none ever
+ * matches we send the held copy as a last resort so the core can still boot. */
+static uint8_t  *rom0_deferred         = NULL;
+static int       rom0_deferred_size    = 0;
+static uint32_t  rom0_deferred_address = 0;
+
+static void rom0_defer(uint32_t address)
+{
+	/* Take ownership of romdata without sending it. */
+	if (rom0_deferred) free(rom0_deferred);
+	rom0_deferred         = romdata;
+	rom0_deferred_size    = romlen[0];
+	rom0_deferred_address = address;
+	romdata               = NULL;  // prevent rom_start() from freeing our copy
+	printf("file_finish: ROM0 deferred (md5 mismatch, waiting for valid variant)\n\n");
+}
+
 static void rom_start(unsigned char index)
 {
 	romindex = index;
@@ -840,11 +859,34 @@ static int xml_send_rom(XMLEvent evt, const XMLNode* node, SXML_CHAR* text, cons
 						}
 					}
 				}
+				else if (arc_info->romindex == 0 && romlen[0] > 0)
+				{
+					// No checksum on ROM0: first successfully loaded variant wins
+					// in merged ROM sets, preventing subsequent variants from
+					// overwriting good data.
+					arc_info->validrom0 = 1;
+				}
 
+				if (arc_info->romindex == 0 && !no_checksum && !checksumsame)
+			{
+				// ROM0 checksum mismatch: hold the data in case a better
+				// variant follows (merged ROM sets). rom_start() on the
+				// next <rom> will not free it because romdata is NULL.
+				rom0_defer(arc_info->address);
+			}
+			else
+			{
+				// Valid ROM0 found: discard any previously deferred copy.
+				if (arc_info->romindex == 0 && arc_info->validrom0 && rom0_deferred)
+				{
+					free(rom0_deferred);
+					rom0_deferred = NULL;
+				}
 				rom_finish(1, arc_info->address, arc_info->romindex);
 			}
-			arc_info->insiderom = 0;
 		}
+		arc_info->insiderom = 0;
+	}
 
 		// At the end of a part node, send the rom part if we are inside a rom tag
 		//int user_io_file_tx_body_filepart(const char *name,int start, int len)
@@ -1156,8 +1198,37 @@ int arcade_send_rom(const char *xml)
 	if (st) arc_info.file_size = (int)st->st_size;
 	ProgressMessage(0, 0, 0, 0);
 
+	// Clear any deferred state left over from a previous game load.
+	if (rom0_deferred) { free(rom0_deferred); rom0_deferred = NULL; }
+	rom0_deferred_size = 0;
+	rom0_deferred_address = 0;
+
 	// parse
 	XMLDoc_parse_file_SAX(xml, &sax, &arc_info);
+
+	// If no ROM0 variant passed its checksum, send the last deferred one so
+	// the core can at least attempt to boot and the user sees the OSD warning.
+	if (arc_info.validrom0 == 0 && rom0_deferred)
+	{
+		printf("arcade_send_rom: no valid ROM0 found, sending deferred fallback\n");
+		if (romdata) free(romdata);
+		romdata   = rom0_deferred;
+		romlen[0] = rom0_deferred_size;
+		romindex  = 0;
+		uint32_t deferred_addr = rom0_deferred_address;
+		rom0_deferred         = NULL;
+		rom0_deferred_size    = 0;
+		rom0_deferred_address = 0;
+		rom_finish(1, deferred_addr, 0);
+	}
+	else if (rom0_deferred)
+	{
+		free(rom0_deferred);
+		rom0_deferred         = NULL;
+		rom0_deferred_size    = 0;
+		rom0_deferred_address = 0;
+	}
+
 	if (arc_info.validrom0 == 0 && strlen(arc_info.error_msg))
 	{
 		strcpy(arcade_error_msg, arc_info.error_msg);
@@ -1205,7 +1276,7 @@ void arcade_check_error()
 		printf("ERROR: [%s]\n", arcade_error_msg);
 		Info(arcade_error_msg, 1000 * 30);
 		arcade_error_msg[0] = 0;
-		sleep(30);
+		sleep(5);  // OSD stays for 30 s; sleep only long enough to ensure it's seen
 	}
 }
 
