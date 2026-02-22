@@ -2881,7 +2881,8 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 		if ((ev->type == EV_ABS || ev->type == EV_REL) && (ev->code == 7 || ev->code == 8) && input[dev].quirk != QUIRK_WHEEL) return;
 
 		// protection against joysticks generating 2 codes per button
-		if (ev->type == EV_KEY && !(is_menu() && mapping < 2 && mapping_button == SYS_BTN_OSD_KTGL) && !map_skip)
+		bool assigning_kbd_toggle = is_menu() && mapping < 2 && mapping_button == SYS_BTN_OSD_KTGL;
+		if (ev->type == EV_KEY && !assigning_kbd_toggle && !map_skip)
 		{
 			if (!mapping_current_key)
 			{
