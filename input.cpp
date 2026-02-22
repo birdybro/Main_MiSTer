@@ -2068,7 +2068,8 @@ static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int 
 					}
 				}
 
-				if((mask & JOY_BTN2) && !(old_osdbtn & JOY_BTN2)) mask = 0;
+				bool untracked_btn2_release = (mask & JOY_BTN2) && !(old_osdbtn & JOY_BTN2);
+				if (untracked_btn2_release) mask = 0;
 			}
 
 			memset(key_states, 0, sizeof(key_states));
