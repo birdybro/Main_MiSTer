@@ -1871,7 +1871,8 @@ static bool handle_autofire_toggle(int num, uint32_t mask, uint32_t code, char p
 	// and if we are, we toggle autofire for that button
 	if (!user_io_osd_is_visible() && press && !cfg.disable_autofire)
 	{
-		if ((lastcode[num] && lastmask[num] && (lastmask[num] & 0xF) == 0)) // don't allow enabling autofire on directions
+		bool no_direction_bits = (lastmask[num] & 0xF) == 0;
+		if (lastcode[num] && lastmask[num] && no_direction_bits) // don't allow enabling autofire on directions
 		{
 			char *str_ptr = str;
 			inc_autofire_code(num, lastcode[num], lastmask[num]);
