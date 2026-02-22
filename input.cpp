@@ -1087,7 +1087,7 @@ uint8_t ps2_kbd_scan_set = 2;
 uint32_t get_ps2_code(uint16_t key)
 {
 	if (key > 255) return NONE;
-	return (ps2_kbd_scan_set == 1) ? ev2ps2_set1[key] : ev2ps2[key];
+	return (ps2_kbd_scan_set == 1 ? ev2ps2_set1 : ev2ps2)[key];
 }
 
 uint32_t get_amiga_code(uint16_t key)
@@ -1337,7 +1337,7 @@ static char has_led(int fd)
 		return 0;
 	}
 
-	return test_bit(EV_LED, evtype_b) ? 1 : 0;
+	return !!test_bit(EV_LED, evtype_b);
 }
 
 static char leds_state = 0;
@@ -1348,7 +1348,7 @@ void set_kbdled(int mask, int state)
 
 int get_kbdled(int mask)
 {
-	return (leds_state & (mask&HID_LED_MASK)) ? 1 : 0;
+	return !!(leds_state & (mask&HID_LED_MASK));
 }
 
 int toggle_kbdled(int mask)
@@ -1460,7 +1460,7 @@ int get_map_finish()
 static uint32_t osd_timer = 0;
 int get_map_cancel()
 {
-	return (mapping && !is_menu() && osd_timer && CheckTimer(osd_timer));
+	return mapping && !is_menu() && osd_timer && CheckTimer(osd_timer);
 }
 
 static char *get_unique_mapping(int dev, int force_unique = 0)
@@ -1578,7 +1578,7 @@ uint16_t get_map_pid()
 
 int has_default_map()
 {
-	return (mapping_dev >= 0) ? (input[mapping_dev].has_mmap == 1) : 0;
+	return (mapping_dev >= 0) ? input[mapping_dev].has_mmap == 1 : 0;
 }
 
 static char kr_fn_table[] =
@@ -1628,7 +1628,7 @@ static int keyrah_trans(int key, int press)
 	if (key == KEY_102ND)
 	{
 		if (!press && fn == 1) menu_key_set(KEY_MENU);
-		fn = press ? 1 : 0;
+		fn = !!press;
 		return 0;
 	}
 	else if (fn)
@@ -1871,7 +1871,7 @@ static bool handle_autofire_toggle(int num, uint32_t mask, uint32_t code, char p
 	// and if we are, we toggle autofire for that button
 	if (!user_io_osd_is_visible() && press && !cfg.disable_autofire)
 	{
-		if ((lastcode[num] && lastmask[num] && (lastmask[num] & 0xF) == 0)) // don't allow enabling autofire on directions
+		if (lastcode[num] && lastmask[num] && !(lastmask[num] & 0xF)) // don't allow enabling autofire on directions
 		{
 			char *strat = str;
 			inc_autofire_code(num, lastcode[num], lastmask[num]);
@@ -2966,7 +2966,7 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 				if (ev->value == 1 && mapping_dev < 0 && !clear)
 				{
 					mapping_dev = dev;
-					mapping_type = (ev->code >= 256) ? 1 : 0;
+					mapping_type = ev->code >= 256;
 					key_mapped = 0;
 					memset(input[mapping_dev].map, 0, sizeof(input[mapping_dev].map));
 				}
@@ -4213,7 +4213,7 @@ static int vcs_proc(int dev, input_event *ev)
 		else if (diff <= -6 || diff >= 6)
 		{
 			inp->spinner_accept = 1;
-			inp->spinner_dir = (diff > 0) ? 1 : 0;
+			inp->spinner_dir = diff > 0;
 			diff = inp->spinner_dir ? 1 : -1;
 		}
 
@@ -4262,11 +4262,11 @@ void openfire_signal()
 	for (int i = 0; i < NUMDEV; i++)
 	{
 		if (input[i].vid == 0xf143 && strstr(input[i].name, "OpenFIRE ") &&
-			strstr(input[i].devname, "mouse") == NULL)
+			!strstr(input[i].devname, "mouse"))
 		{
 			// OF generates 3 devices, so just focus on the one actual gamepad slot.
-			char *nameInit = input[i].name;
-			if (memcmp(nameInit+strlen(input[i].name)-5, "Mouse", 5) != 0 && memcmp(nameInit+strlen(input[i].name)-8, "Keyboard", 8) != 0)
+			char *nameEnd = input[i].name + strlen(input[i].name);
+			if (memcmp(nameEnd-5, "Mouse", 5) != 0 && memcmp(nameEnd-8, "Keyboard", 8) != 0)
 			{
 				char mname[strlen(input[i].name)];
 				strcpy(mname, input[i].name);
@@ -4282,7 +4282,7 @@ void openfire_signal()
 				sprintf(devicePath, "/dev/serial/by-id/usb-%s_%s-if00", mname, strrchr(input[i].id, '/')+1);
 
 				FILE *deviceFile = fopen(devicePath, "r+");
-				if(deviceFile == NULL) {
+				if(!deviceFile) {
 					printf("Failed to send command to %s: device path doesn't exist?\n", input[i].name);
 				} else {
 					fprintf(deviceFile, "M0x9");
@@ -4423,7 +4423,7 @@ int process_joycon(int dev, input_event *ev, input_absinfo *absinfo)
 			if (!uncombo)
 			{
 				FileLoad("/tmp/combo_id", &id, sizeof(id));
-				if (!(++id)) ++id;
+				if (++id == 0) ++id;
 				FileSave("/tmp/combo_id", &id, sizeof(id));
 			}
 
@@ -4470,7 +4470,7 @@ static int rumble_input_device(int devnum, uint16_t strong_mag, uint16_t weak_ma
 	int ioret = 0;
 	if (!input[devnum].has_rumble) return 0;
 	int fd = pool[devnum].fd;
-	if (!(fd >= 0)) return 0;
+	if (fd < 0) return 0;
 
 	if (!strong_mag && !weak_mag) //Stop rumble
 	{
@@ -5004,8 +5004,8 @@ int input_test(int getchar)
 						if (input[n].vid == 0xf143 && strstr(input[n].name, "OpenFIRE "))
 						{
 							// OF generates 3 devices, so just focus on the one actual gamepad slot.
-							char *nameInit = input[n].name;
-							if(memcmp(nameInit+strlen(input[n].name)-5, "Mouse", 5) != 0 && memcmp(nameInit+strlen(input[n].name)-8, "Keyboard", 8) != 0)
+							char *nameEnd = input[n].name + strlen(input[n].name);
+							if(memcmp(nameEnd-5, "Mouse", 5) != 0 && memcmp(nameEnd-8, "Keyboard", 8) != 0)
 							{
 								input[n].quirk = QUIRK_LIGHTGUN;
 								input[n].lightgun = 1;
@@ -5123,7 +5123,7 @@ int input_test(int getchar)
 							snprintf(input[n].idstr, sizeof(input[n].idstr), "%04x_%04x", input[n].vid, input[n].pid);
 						}
 
-						ioctl(pool[n].fd, EVIOCGRAB, (grabbed | user_io_osd_is_visible()) ? 1 : 0);
+						ioctl(pool[n].fd, EVIOCGRAB, !!(grabbed | user_io_osd_is_visible()));
 
 						n++;
 						if (n >= NUMDEV) break;
@@ -5259,7 +5259,7 @@ int input_test(int getchar)
 										{
 											if (ev.value)
 											{
-												if ((input[i].misc_flags & 0x6) == 0) input[i].misc_flags = 0x3; // X
+												if (!(input[i].misc_flags & 0x6)) input[i].misc_flags = 0x3; // X
 												else if ((input[i].misc_flags & 0x6) == 2) input[i].misc_flags = 0x5; // Y
 												else input[i].misc_flags = 0x1; // None
 
@@ -5744,7 +5744,7 @@ int input_test(int getchar)
 								else
 									val = zval;
 
-								int btn = (data[0] & 7) ? 1 : 0;
+								int btn = !!(data[0] & 7);
 								if (input[i].misc_flags != btn)
 								{
 									input[i].misc_flags = btn;
@@ -5838,15 +5838,15 @@ int input_test(int getchar)
 					ev.type = EV_LED;
 
 					ev.code = LED_SCROLLL;
-					ev.value = (cur_leds&HID_LED_SCROLL_LOCK) ? 1 : 0;
+					ev.value = !!(cur_leds&HID_LED_SCROLL_LOCK);
 					write(pool[i].fd, &ev, sizeof(struct input_event));
 
 					ev.code = LED_NUML;
-					ev.value = (cur_leds&HID_LED_NUM_LOCK) ? 1 : 0;
+					ev.value = !!(cur_leds&HID_LED_NUM_LOCK);
 					write(pool[i].fd, &ev, sizeof(struct input_event));
 
 					ev.code = LED_CAPSL;
-					ev.value = (cur_leds&HID_LED_CAPS_LOCK) ? 1 : 0;
+					ev.value = !!(cur_leds&HID_LED_CAPS_LOCK);
 					write(pool[i].fd, &ev, sizeof(struct input_event));
 				}
 			}
@@ -5860,7 +5860,7 @@ void key_update_frames_held()
 {
 	for (int i = 0; i < NUMPLAYERS; i++) {
 		for (int k = 0; k < key_states[i].count; k++) {
-			if (key_states[i].mask[k] != 0) {
+			if (key_states[i].mask[k]) {
 				key_states[i].frames_held[k]++;
 			} else {
 				key_states[i].frames_held[k]= 0;
@@ -5926,7 +5926,7 @@ int input_poll(int getchar)
 	if (grabbed)
 	{
 		for (int i = 0; i < NUMPLAYERS; i++) {
-			joy_mask[i] = joy_mask[i] | autofire_mask[i];
+			joy_mask[i] |= autofire_mask[i];
 			int newdir = (joy_mask[i] & 0xF) | (joy_mask_prev[i] & 0xF);
 			if (joy_mask[i] != joy_mask_prev[i])
 			{
@@ -6011,7 +6011,7 @@ void input_switch(int grab)
 
 	for (int i = 0; i < NUMDEV; i++)
 	{
-		if (pool[i].fd >= 0) ioctl(pool[i].fd, EVIOCGRAB, (grabbed | user_io_osd_is_visible()) ? 1 : 0);
+		if (pool[i].fd >= 0) ioctl(pool[i].fd, EVIOCGRAB, !!(grabbed | user_io_osd_is_visible()));
 	}
 }
 
