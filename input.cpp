@@ -1919,6 +1919,14 @@ struct KeyStates {
 
 KeyStates key_states[NUMPLAYERS] = {};
 
+// Tracks the last pressed direction per axis for SOCD last-input-priority
+struct SocdLastInput {
+	uint32_t lr; // JOY_LEFT or JOY_RIGHT, or 0
+	uint32_t ud; // JOY_UP or JOY_DOWN, or 0
+};
+
+static SocdLastInput socd_last[NUMPLAYERS] = {};
+
 // returns the bitmask representing all button states for a given ev->code (key)
 // returns 0 if the key is not found or if key has no buttons pressed.
 static uint32_t get_key_state(int player, uint32_t key)
@@ -1964,6 +1972,27 @@ static void set_key_state(int player, uint32_t key, bool press, uint32_t mask)
 	}
 }
 
+// Resolve an SOCD conflict for one axis.
+// Returns the direction bits to keep (one, both cleared, etc.)
+static uint32_t socd_resolve(uint32_t dir_a, uint32_t dir_b, uint32_t last_dir)
+{
+	switch (cfg.socd)
+	{
+	case 1: // neutral: both cancel
+		return 0;
+
+	case 2: // up priority: U+D keeps up, L+R cancels
+		return (dir_a == JOY_UP) ? JOY_UP :
+		       (dir_b == JOY_UP) ? JOY_UP : 0;
+
+	case 3: // last input wins
+		return last_dir;
+
+	default:
+		return dir_a | dir_b;
+	}
+}
+
 uint32_t build_joy_mask(int player)
 {
 	uint32_t mask = 0u;
@@ -1974,11 +2003,23 @@ uint32_t build_joy_mask(int player)
 			mask |= get_key_state(player, key);
 	}
 
-	// SOCD cleaning: cancel simultaneous opposing directions
+	// SOCD cleaning: resolve simultaneous opposing directions
 	if (cfg.socd)
 	{
-		if ((mask & (JOY_LEFT | JOY_RIGHT)) == (JOY_LEFT | JOY_RIGHT)) mask &= ~(JOY_LEFT | JOY_RIGHT);
-		if ((mask & (JOY_UP | JOY_DOWN)) == (JOY_UP | JOY_DOWN)) mask &= (cfg.socd == 2) ? ~JOY_DOWN : ~(JOY_UP | JOY_DOWN);
+		bool lr_conflict = (mask & (JOY_LEFT | JOY_RIGHT)) == (JOY_LEFT | JOY_RIGHT);
+		bool ud_conflict = (mask & (JOY_UP | JOY_DOWN))    == (JOY_UP | JOY_DOWN);
+
+		if (lr_conflict)
+		{
+			mask &= ~(JOY_LEFT | JOY_RIGHT);
+			mask |= socd_resolve(JOY_LEFT, JOY_RIGHT, socd_last[player].lr);
+		}
+
+		if (ud_conflict)
+		{
+			mask &= ~(JOY_UP | JOY_DOWN);
+			mask |= socd_resolve(JOY_UP, JOY_DOWN, socd_last[player].ud);
+		}
 	}
 
 	return mask;
@@ -2079,6 +2120,7 @@ static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int 
 			}
 
 			memset(key_states, 0, sizeof(key_states));
+			memset(socd_last, 0, sizeof(socd_last));
 			struct input_event ev;
 			ev.type = EV_KEY;
 			ev.value = press;
@@ -2208,6 +2250,12 @@ static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int 
 		}
 		else if(jnum)
 		{
+			// Track last-pressed direction per axis for SOCD last-input-priority
+			if (press && cfg.socd == 3)
+			{
+				if (mask & (JOY_LEFT | JOY_RIGHT)) socd_last[num].lr = mask & (JOY_LEFT | JOY_RIGHT);
+				if (mask & (JOY_UP | JOY_DOWN))   socd_last[num].ud = mask & (JOY_UP | JOY_DOWN);
+			}
 			set_key_state(num, code, press, mask);
 		}
 	}
@@ -2414,6 +2462,7 @@ void reset_players()
 	}
 
 	memset(key_states, 0, sizeof(key_states));
+	memset(socd_last, 0, sizeof(socd_last));
 	for (int i = 0; i < NUMPLAYERS; i++) {
 		clear_autofire(i);
 	}
@@ -4775,6 +4824,7 @@ int input_test(int getchar)
 
 		// clear button reference counts and key states
 		memset(key_states, 0, sizeof(key_states));
+		memset(socd_last, 0, sizeof(socd_last));
 		for (int i = 0; i < NUMPLAYERS; i++) {
 			clear_autofire(i);
 		}
@@ -5951,6 +6001,7 @@ int input_poll(int getchar)
 			if(joy_mask[i]) user_io_digital_joystick(i, 0, 1);
 		}
 		memset(key_states, 0, sizeof(key_states));
+		memset(socd_last, 0, sizeof(socd_last));
 	}
 
 	if (mouse_req)
