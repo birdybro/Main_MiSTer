@@ -2613,8 +2613,9 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 
 	bool key_cancels_mapping = (ev->code == KEY_SPACE && mapping_type == 1) || ev->code == KEY_ALTERASE;
 	int map_skip = ev->type == EV_KEY && mapping && key_cancels_mapping && (mapping_dev >= 0 || mapping_button < 0);
-	int cancel   = (ev->type == EV_KEY && ev->code == KEY_ESC && !(mapping && mapping_type == 3 && mapping_button));
-	int enter    = (ev->type == EV_KEY && ev->code == KEY_ENTER && !(mapping && mapping_type == 3 && mapping_button));
+	bool not_text_mapping = !(mapping && mapping_type == 3 && mapping_button);
+	int cancel   = ev->type == EV_KEY && ev->code == KEY_ESC   && not_text_mapping;
+	int enter    = ev->type == EV_KEY && ev->code == KEY_ENTER && not_text_mapping;
 	int origcode = ev->code;
 
 	if (!input[dev].has_mmap)
