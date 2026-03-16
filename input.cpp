@@ -6026,8 +6026,7 @@ int input_poll(int getchar)
 	if (grabbed)
 	{
 		for (int i = 0; i < NUMPLAYERS; i++) {
-			joy_mask[i] = joy_mask[i] | autofire_mask[i];
-			joy_mask[i] = apply_socd(i, joy_mask[i]);
+			joy_mask[i] = apply_socd(i, joy_mask[i] | autofire_mask[i]);
 			int newdir = (joy_mask[i] & 0xF) | (joy_mask_prev[i] & 0xF);
 			if (joy_mask[i] != joy_mask_prev[i])
 			{
@@ -6044,8 +6043,6 @@ int input_poll(int getchar)
 			if(joy_mask[i]) user_io_digital_joystick(i, 0, 1);
 		}
 		memset(key_states, 0, sizeof(key_states));
-		memset(socd_last_lr, 0, sizeof(socd_last_lr));
-		memset(socd_last_ud, 0, sizeof(socd_last_ud));
 	}
 
 	if (mouse_req)
