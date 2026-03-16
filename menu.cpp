@@ -7577,7 +7577,7 @@ void HandleUI(void)
 				struct tm tm = *localtime(&t);
 				if (tm.tm_year >= 117)
 				{
-					strftime(str + strlen(str), sizeof(str) - 1 - strlen(str), "%b %d %a%H:%M:%S", &tm);
+					strftime(str + strlen(str), sizeof(str) - 1 - strlen(str), cfg.clock_12hr ? "%b %d %a%I:%M:%S" : "%b %d %a%H:%M:%S", &tm);
 				}
 
 				int n = 8;

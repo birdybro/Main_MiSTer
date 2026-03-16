@@ -104,6 +104,7 @@ typedef struct {
 	char vfilter_interlace_default[1023];
 	char autofire_rates[3072];
 	uint8_t autofire_on_directions;
+	uint8_t clock_12hr;
 
 } cfg_t;
 
