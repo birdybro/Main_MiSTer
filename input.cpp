@@ -2048,27 +2048,21 @@ uint32_t build_autofire_mask(int player)
 // SOCD cleaning: 0=off, 1=up priority, 2=neutral, 3=last wins
 #define SOCD_LR 0x3 // SYS_BTN_RIGHT | SYS_BTN_LEFT
 #define SOCD_UD 0xC // SYS_BTN_DOWN  | SYS_BTN_UP
-static uint8_t socd_last_lr[NUMPLAYERS] = {};
-static uint8_t socd_last_ud[NUMPLAYERS] = {};
-
-static void socd_track(int player, uint32_t mask, bool press)
-{
-	if (cfg.socd_mode != 3 || !(mask & 0xF)) return;
-	if (mask & SOCD_LR) socd_last_lr[player] = press ? (mask & SOCD_LR) : 0;
-	if (mask & SOCD_UD) socd_last_ud[player] = press ? (mask & SOCD_UD) : 0;
-}
-
 static uint32_t apply_socd(int player, uint32_t mask)
 {
 	if (!cfg.socd_mode) return mask;
 
+	static uint8_t prev_dir[NUMPLAYERS] = {};
+	int newdir = (mask & 0xF) ^ prev_dir[player];
+	prev_dir[player] = mask & 0xF;
+
 	uint32_t lr = mask & SOCD_LR, ud = mask & SOCD_UD;
 
 	if (lr == SOCD_LR)
-		mask &= ~((cfg.socd_mode == 3) ? (lr ^ socd_last_lr[player]) : SOCD_LR);
+		mask &= ~((cfg.socd_mode == 3) ? (lr ^ (newdir & SOCD_LR)) : SOCD_LR);
 	if (ud == SOCD_UD)
 		mask &= ~((cfg.socd_mode == 1) ? (1 << SYS_BTN_DOWN) :
-		           (cfg.socd_mode == 3) ? (ud ^ socd_last_ud[player]) : SOCD_UD);
+		           (cfg.socd_mode == 3) ? (ud ^ (newdir & SOCD_UD)) : SOCD_UD);
 
 	return mask;
 }
@@ -2284,7 +2278,6 @@ static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int 
 		else if(jnum)
 		{
 			set_key_state(num, code, press, mask);
-			socd_track(num, mask, press);
 		}
 	}
 }
@@ -5976,7 +5969,7 @@ int input_poll(int getchar)
 	static bool autofire_cfg_parsed = false;
  	if (!autofire_cfg_parsed) autofire_cfg_parsed = parse_autofire_cfg();
 	static uint32_t joy_mask_prev[NUMPLAYERS] = {};
-	
+
 	// FRAME_TICK compares against frame_timer's counter (updated elsewhere) and fires once per frame.
 	static uint32_t last_frame_count = 0;
 	if (FRAME_TICK(last_frame_count)) {
@@ -6027,9 +6020,9 @@ int input_poll(int getchar)
 	{
 		for (int i = 0; i < NUMPLAYERS; i++) {
 			joy_mask[i] = apply_socd(i, joy_mask[i] | autofire_mask[i]);
-			int newdir = (joy_mask[i] & 0xF) | (joy_mask_prev[i] & 0xF);
 			if (joy_mask[i] != joy_mask_prev[i])
 			{
+				int newdir = (joy_mask[i] & 0xF) ^ (joy_mask_prev[i] & 0xF);
 				joy_mask_prev[i] = joy_mask[i];
 				user_io_digital_joystick(i, joy_mask[i], newdir);
 			}
