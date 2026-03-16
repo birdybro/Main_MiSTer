@@ -2045,6 +2045,34 @@ uint32_t build_autofire_mask(int player)
 	return mask;
 }
 
+// SOCD cleaning: 0=off, 1=up priority, 2=neutral, 3=last wins
+#define SOCD_LR 0x3 // SYS_BTN_RIGHT | SYS_BTN_LEFT
+#define SOCD_UD 0xC // SYS_BTN_DOWN  | SYS_BTN_UP
+static uint8_t socd_last_lr[NUMPLAYERS] = {};
+static uint8_t socd_last_ud[NUMPLAYERS] = {};
+
+static void socd_track(int player, uint32_t mask, bool press)
+{
+	if (cfg.socd_mode != 3 || !(mask & 0xF)) return;
+	if (mask & SOCD_LR) socd_last_lr[player] = press ? (mask & SOCD_LR) : 0;
+	if (mask & SOCD_UD) socd_last_ud[player] = press ? (mask & SOCD_UD) : 0;
+}
+
+static uint32_t apply_socd(int player, uint32_t mask)
+{
+	if (!cfg.socd_mode) return mask;
+
+	uint32_t lr = mask & SOCD_LR, ud = mask & SOCD_UD;
+
+	if (lr == SOCD_LR)
+		mask &= ~((cfg.socd_mode == 3) ? (lr ^ socd_last_lr[player]) : SOCD_LR);
+	if (ud == SOCD_UD)
+		mask &= ~((cfg.socd_mode == 1) ? (1 << SYS_BTN_DOWN) :
+		           (cfg.socd_mode == 3) ? (ud ^ socd_last_ud[player]) : SOCD_UD);
+
+	return mask;
+}
+
 static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int bnum, int dont_save = 0)
 {
 	int num = jnum - 1;
@@ -2256,6 +2284,7 @@ static void joy_digital(int jnum, uint32_t mask, uint32_t code, char press, int 
 		else if(jnum)
 		{
 			set_key_state(num, code, press, mask);
+			socd_track(num, mask, press);
 		}
 	}
 }
@@ -5999,6 +6028,7 @@ int input_poll(int getchar)
 	{
 		for (int i = 0; i < NUMPLAYERS; i++) {
 			joy_mask[i] = joy_mask[i] | autofire_mask[i];
+			joy_mask[i] = apply_socd(i, joy_mask[i]);
 			int newdir = (joy_mask[i] & 0xF) | (joy_mask_prev[i] & 0xF);
 			if (joy_mask[i] != joy_mask_prev[i])
 			{
@@ -6015,6 +6045,8 @@ int input_poll(int getchar)
 			if(joy_mask[i]) user_io_digital_joystick(i, 0, 1);
 		}
 		memset(key_states, 0, sizeof(key_states));
+		memset(socd_last_lr, 0, sizeof(socd_last_lr));
+		memset(socd_last_ud, 0, sizeof(socd_last_ud));
 	}
 
 	if (mouse_req)
