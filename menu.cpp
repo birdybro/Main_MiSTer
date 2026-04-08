@@ -66,6 +66,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "profiling.h"
 #include "str_util.h"
 #include "autofire.h"
+#include "modem.h"
 
 /*menu states*/
 enum MENU
@@ -3503,6 +3504,27 @@ void HandleUI(void)
 				sprintf(s, " Link:            %s", (midilink == 6) ? "USB Serial" : (midilink == 5) ? "       UDP" : "       TCP");
 				OsdWrite(m++, s, menusub == 1);
 				menumask |= 2;
+
+				sprintf(s, " Telnet IAC:          %s", modem_get_telnet_mode() ? "  On" : " Off");
+				OsdWrite(m++, s, menusub == 9);
+				menumask |= 0x200;
+
+				const char *mstate = "IDLE";
+				switch (modem_get_state())
+				{
+				case MODEM_STATE_DIALING: mstate = "DIALING"; break;
+				case MODEM_STATE_ONLINE:  mstate = "CONNECTED"; break;
+				case MODEM_STATE_ESCAPE:  mstate = "CONNECTED"; break;
+				default: break;
+				}
+				sprintf(s, " Status:        %9s", mstate);
+				OsdWrite(m++, s, 0, 1);
+
+				if (modem_get_remote()[0])
+				{
+					sprintf(s, " Remote: %18s", modem_get_remote());
+					OsdWrite(m++, s, 0, 1);
+				}
 			}
 
 			if (mode == 3)
@@ -3666,6 +3688,11 @@ void HandleUI(void)
 					menustate = MENU_COMMON1;
 					menusub = 5;
 				}
+				break;
+
+			case 9: // Telnet IAC toggle (modem mode)
+				modem_set_telnet_mode(!modem_get_telnet_mode());
+				menustate = MENU_UART1;
 				break;
 
 			default:

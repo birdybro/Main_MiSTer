@@ -39,6 +39,7 @@
 #include "frame_timer.h"
 #include "scaler.h"
 #include "support.h"
+#include "modem.h"
 
 static char core_path[1024] = {};
 static char rbf_path[1024] = {};
@@ -1141,6 +1142,11 @@ int GetUARTMode()
 void SetUARTMode(int mode)
 {
 	mode &= 0xF;
+
+	// Shut down built-in modem when leaving modem mode
+	int prev_mode = GetUARTMode();
+	if (prev_mode == 4 && mode != 4) modem_shutdown();
+
 	uint32_t baud = GetUARTbaud(mode);
 
 	spi_uio_cmd_cont(UIO_SET_UART);
@@ -1156,9 +1162,18 @@ void SetUARTMode(int mode)
 	sprintf(data, "%d", baud);
 	MakeFile("/tmp/UART_SPEED", data);
 
-	char cmd[32];
-	sprintf(cmd, "uartmode %d", mode);
-	system(cmd);
+	if (mode == 4)
+	{
+		// Use built-in Hayes modem emulation
+		modem_init();
+	}
+	else
+	{
+		// Other modes use external uartmode script
+		char cmd[32];
+		sprintf(cmd, "uartmode %d", mode);
+		system(cmd);
+	}
 }
 
 static int uart_speed_idx = 0;
@@ -3730,6 +3745,7 @@ void user_io_poll()
 	if (is_atari800()) atari800_poll();
 	if (is_atari5200()) atari5200_poll();
 	if (is_3do()) p3do_poll();
+	if (GetUARTMode() == 4) modem_poll();
 	process_ss(0);
 }
 
